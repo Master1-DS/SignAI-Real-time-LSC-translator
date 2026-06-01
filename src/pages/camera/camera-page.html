@@ -1,0 +1,80 @@
+<main class="relative w-full overflow-hidden bg-black"
+      style="height: 100dvh;">
+
+    <video
+        #videoEl
+        autoplay
+        playsinline
+        muted
+        class="absolute inset-0 w-full h-full object-cover"
+        [class.-scale-x-1]="cameraService.facing() === 'user'"
+    ></video>
+
+    <canvas
+        #canvasEl
+        class="absolute inset-0 w-full h-full pointer-events-none z-10"
+        style="object-fit: cover;"
+    ></canvas>
+
+  <div class="absolute inset-0 camera-mesh pointer-events-none z-10"></div>
+
+    <!-- <app-status-bar
+        class="absolute left-1/2 top-7 -translate-x-1/2 w-[calc(100%-40px)] max-w-xl z-20"
+        [status]="translationService.streamStatus()"
+    /> -->
+
+    @if(isLoadingML()) {
+        <div class="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4
+                    bg-black/60 backdrop-blur-sm pointer-events-none">
+            <div class="w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary
+                        animate-spin"></div>
+            <p class="text-on-surface-variant text-label-md font-label-md">
+                Chargement des modèles IA…
+            </p>
+        </div>
+    }
+
+    @if(!cameraService.isCameraActive()) {
+        <div class="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6
+                    bg-black/70 backdrop-blur-sm">
+            <div class="w-20 h-20 rounded-full bg-primary-container/20 border-2 border-primary/40
+                        flex items-center justify-center">
+                <span class="material-symbols-outlined text-5xl text-primary icon-outline">videocam</span>
+            </div>
+            <p class="text-on-surface-variant text-label-md font-label-md">Caméra désactivée</p>
+            <button
+                (click)="startCamera()"
+                class="bg-primary text-on-primary font-label-md text-label-md
+                    px-8 py-4 rounded-full shadow-lg active:scale-95 transition-all duration-200">
+                Démarrer la caméra
+            </button>
+        </div>
+    }
+
+    <app-tracking-overlay
+        class="absolute top-20 inset-0 z-10 pointer-events-none"
+        [word]="translationService.currentWord()"
+        [confidence]="translationService.confidence()"
+        [isActive]="translationService.isTranslating()"
+    />
+
+    <div class="absolute left-1/2 -translate-x-1/2 w-full max-w-2xl px-5 z-20"
+        style="bottom: calc(150px + env(safe-area-inset-bottom, 0px) + 12px);">
+
+        <app-translation-panel
+            [sentence]="translationService.currentSentence()"
+        />
+
+        <app-camera-controls
+            class="mt-3 block"
+            [isPlaying]="isPlaying()"
+            [flashlightOn]="cameraService.flashlightOn()"
+            [hasFlashlight]="cameraService.hasFlashlight()"
+            (playPauseToggled)="togglePlayPause()"
+            (flipRequested)="onFlipCamera()"
+            (flashToggled)="onToggleFlash()"
+        />
+
+    </div>
+
+</main>
