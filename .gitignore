@@ -5,11 +5,14 @@
 /tmp
 /out-tsc
 /bazel-out
+/android
 
 # Node
 /node_modules
 npm-debug.log
 yarn-error.log
+
+/public
 
 # IDEs and editors
 .idea/
