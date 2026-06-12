@@ -98,8 +98,8 @@ export interface NavItem {
 })
 export class LiquidGlassNavComponent {
     @Input() navItems: NavItem[] = [
-        { label: 'Settings',    icon: 'settings',     route: '/setting' },
+        { label: 'Upload',    icon: 'upload',     route: '/upload' },
         { label: 'Camera',     icon: 'videocam', route: '/camera' },
-        { label: 'History', icon: 'history',  route: '/history' },
+        // { label: 'History', icon: 'history',  route: '/history' },
     ];
 }

@@ -1,80 +1,160 @@
-<main class="relative w-full overflow-hidden bg-black"
-      style="height: 100dvh;">
+<main class="page-camera relative w-full bg-black">
 
-    <video
-        #videoEl
-        autoplay
-        playsinline
-        muted
-        class="absolute inset-0 w-full h-full object-cover"
-        [class.-scale-x-1]="cameraService.facing() === 'user'"
-    ></video>
+  <!-- Flux vidéo -->
+  <video
+    #videoEl
+    autoplay
+    playsinline
+    muted
+    class="absolute inset-0 w-full h-full object-cover"
+    [class.-scale-x-1]="cameraService.facing() === 'user'"
+  ></video>
 
-    <canvas
-        #canvasEl
-        class="absolute inset-0 w-full h-full pointer-events-none z-10"
-        style="object-fit: cover;"
-    ></canvas>
+  <!-- Canvas MediaPipe landmarks -->
+  <canvas
+    #canvasEl
+    class="absolute inset-0 w-full h-full pointer-events-none z-10"
+    style="object-fit: cover;"
+  ></canvas>
 
+  <!-- Dot-grid overlay -->
   <div class="absolute inset-0 camera-mesh pointer-events-none z-10"></div>
 
-    <!-- <app-status-bar
-        class="absolute left-1/2 top-7 -translate-x-1/2 w-[calc(100%-40px)] max-w-xl z-20"
-        [status]="translationService.streamStatus()"
-    /> -->
+  <!-- Indicateur de chargement -->
+  @if (isLoadingML()) {
+    <div class="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4
+                bg-black/60 backdrop-blur-sm pointer-events-none">
+      <div class="w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary
+                  animate-spin"></div>
+      <p class="text-on-surface-variant text-label-md font-label-md">
+        Chargement des modèles…
+      </p>
+    </div>
+  }
 
-    @if(isLoadingML()) {
-        <div class="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4
-                    bg-black/60 backdrop-blur-sm pointer-events-none">
-            <div class="w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary
-                        animate-spin"></div>
-            <p class="text-on-surface-variant text-label-md font-label-md">
-                Chargement des modèles IA…
-            </p>
+  <!-- Écran de démarrage -->
+  @if (!cameraService.isCameraActive()) {
+    <div class="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6
+                bg-black/70 backdrop-blur-sm">
+      <div class="w-20 h-20 rounded-full bg-primary-container/20 border-2 border-primary/40
+                  flex items-center justify-center">
+        <span class="material-symbols-outlined text-5xl text-primary"
+              style="font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24">
+          videocam
+        </span>
+      </div>
+      <p class="text-on-surface-variant text-label-md font-label-md">Caméra désactivée</p>
+      <button
+        (click)="startCamera()"
+        class="bg-primary text-on-primary font-label-md text-label-md
+               px-8 py-4 rounded-full shadow-lg active:scale-95 transition-all duration-200">
+        Démarrer la caméra
+      </button>
+    </div>
+  }
+
+  <!-- Tracking overlay (mot + barre de confiance — disparaît après 10s) -->
+  <app-tracking-overlay
+    class="absolute inset-0 z-10 pointer-events-none"
+    [word]="translationService.currentWord()"
+    [confidence]="translationService.confidence()"
+    [isActive]="translationService.isTranslating()"
+  />
+
+  <!-- ── Panneau de debug ──────────────────────────────────────────────────── -->
+  @if (translationService.isTranslating()) {
+    <div class="absolute right-3 z-30 flex flex-col gap-2 w-52"
+         style="top: calc(64px + 60px);">
+
+      <!-- Mot validé par vote -->
+      @if (translationService.votedWord()) {
+        <div class="bg-primary/20 glass-panel border border-primary/30 rounded-xl px-3 py-2">
+          <p class="text-[10px] text-primary font-semibold uppercase tracking-widest mb-0.5">
+            Vote majoritaire
+          </p>
+          <p class="text-on-surface font-label-md text-label-md">
+            {{ translationService.votedWord() }}
+          </p>
+          <p class="text-primary text-[11px] font-bold">
+            {{ (translationService.votedConf() * 100).toFixed(1) }}%
+          </p>
         </div>
-    }
+      }
 
-    @if(!cameraService.isCameraActive()) {
-        <div class="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6
-                    bg-black/70 backdrop-blur-sm">
-            <div class="w-20 h-20 rounded-full bg-primary-container/20 border-2 border-primary/40
-                        flex items-center justify-center">
-                <span class="material-symbols-outlined text-5xl text-primary icon-outline">videocam</span>
+      <!-- Prédictions brutes (5 dernières) -->
+      <div class="bg-surface/60 glass-panel border border-white/10 rounded-xl px-3 py-2">
+        <p class="text-[10px] text-on-surface-variant font-semibold uppercase
+                   tracking-widest mb-1.5">
+          Prédictions brutes
+        </p>
+        @for (p of translationService.rawPredictions().slice(0, 5); track p.timestamp) {
+          <div class="flex items-center justify-between py-0.5 border-b border-white/5
+                      last:border-0">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <!-- Indicateur validé / glissant / final -->
+              <span class="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    [class.bg-[#00ff00]]="p.validated"
+                    [class.bg-[#0000ff]]="!p.validated && !p.isFinal"
+                    [class.bg-[#ff0000]]="!p.validated && p.isFinal">
+              </span>
+              <span class="text-on-surface text-[11px] truncate">{{ p.word }}</span>
             </div>
-            <p class="text-on-surface-variant text-label-md font-label-md">Caméra désactivée</p>
-            <button
-                (click)="startCamera()"
-                class="bg-primary text-on-primary font-label-md text-label-md
-                    px-8 py-4 rounded-full shadow-lg active:scale-95 transition-all duration-200">
-                Démarrer la caméra
-            </button>
+            <span class="text-[11px] font-semibold flex-shrink-0 ml-1"
+                  [class.text-primary]="p.confidence >= 0.7"
+                  [class.text-tertiary]="p.confidence >= 0.5 && p.confidence < 0.7"
+                  [class.text-error]="p.confidence < 0.5">
+              {{ (p.confidence * 100).toFixed(0) }}%
+            </span>
+          </div>
+        }
+        @if (translationService.rawPredictions().length === 0) {
+          <p class="text-outline text-[10px] italic">En attente…</p>
+        }
+      </div>
+
+      <!-- Légende -->
+      <div class="bg-surface/40 glass-panel border border-white/5 rounded-xl px-3 py-2">
+        <p class="text-[10px] text-on-surface-variant font-semibold uppercase
+                   tracking-widest mb-1">
+          Légende
+        </p>
+        <div class="flex flex-col gap-0.5">
+          <div class="flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-[#00ff00] flex-shrink-0"></span>
+            <span class="text-[10px] text-on-surface-variant">Validé par vote</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-[#0000ff] flex-shrink-0"></span>
+            <span class="text-[10px] text-on-surface-variant">Glissant (en cours)</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-[#ff0000] flex-shrink-0"></span>
+            <span class="text-[10px] text-on-surface-variant">Final (arrêt)</span>
+          </div>
         </div>
-    }
-
-    <app-tracking-overlay
-        class="absolute top-20 inset-0 z-10 pointer-events-none"
-        [word]="translationService.currentWord()"
-        [confidence]="translationService.confidence()"
-        [isActive]="translationService.isTranslating()"
-    />
-
-    <div class="absolute left-1/2 -translate-x-1/2 w-full max-w-2xl px-5 z-20"
-        style="bottom: calc(150px + env(safe-area-inset-bottom, 0px) + 12px);">
-
-        <app-translation-panel
-            [sentence]="translationService.currentSentence()"
-        />
-
-        <app-camera-controls
-            class="mt-3 block"
-            [isPlaying]="isPlaying()"
-            [flashlightOn]="cameraService.flashlightOn()"
-            [hasFlashlight]="cameraService.hasFlashlight()"
-            (playPauseToggled)="togglePlayPause()"
-            (flipRequested)="onFlipCamera()"
-            (flashToggled)="onToggleFlash()"
-        />
+      </div>
 
     </div>
+  }
+
+  <!-- Panel traduction + contrôles -->
+  <div class="absolute left-1/2 -translate-x-1/2 w-full max-w-2xl px-5 z-20"
+       style="bottom: calc(72px + env(safe-area-inset-bottom, 0px) + 12px);">
+
+    <app-translation-panel
+      [sentence]="translationService.currentSentence()"
+    />
+
+    <app-camera-controls
+      class="mt-3 block"
+      [isPlaying]="isPlaying()"
+      [flashlightOn]="cameraService.flashlightOn()"
+      [hasFlashlight]="cameraService.hasFlashlight()"
+      (playPauseToggled)="togglePlayPause()"
+      (flipRequested)="onFlipCamera()"
+      (flashToggled)="onToggleFlash()"
+    />
+
+  </div>
 
 </main>

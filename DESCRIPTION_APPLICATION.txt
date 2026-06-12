@@ -1,0 +1,371 @@
+================================================================================
+SIGNAI — Application de Reconnaissance et de Traduction de Langue des Signes
+================================================================================
+
+DESCRIPTION GÉNÉRALE
+================================================================================
+
+SignAI est une application web/mobile progressive (PWA) construite avec 
+Angular 21 et Capacitor 8, conçue pour reconnaître et traduire en temps réel 
+les gestes de la Langue des Signes Catalane (LSC) via la caméra de l'appareil. 
+L'application combine des modèles de vision par ordinateur légers (MediaPipe 
+et ONNX Runtime) pour détecter et classifier les signes avec une latence 
+minimale et une haute précision.
+
+Objectif : Offrir une interface intuitive pour :
+  • Capturer et analyser les gestes de langue des signes en direct
+  • Traduire les gestes en mots/phrases en Catalan
+  • Proposer une mode "upload" pour traiter des vidéos sauvegardées
+  • Afficher les résultats avec confiance et historique de session
+
+
+ARCHITECTURE TECHNIQUE
+================================================================================
+
+Stack Technologique
+-------------------
+  • Frontend       : Angular 21 (standalone components), RxJS, signals
+  • Détection      : MediaPipe Vision (HandLandmarker + PoseLandmarker)
+  • Inférence ML   : ONNX Runtime Web avec GPU acceleration
+  • Styling        : Tailwind CSS + Material Design 3
+  • Mobile         : Capacitor 8 (compatible Android)
+  • Build          : Vite + Angular CLI, TypeScript 5.9
+  • Test           : Vitest
+
+
+Modèles Utilisés
+----------------
+
+1. HandLandmarker (MediaPipe)
+   - Détecte jusqu'à 2 mains simultanément
+   - 21 points de repère par main (poignet, doigts, articulations)
+   - Mode GPU, confiance minimale 0.4
+   - Sortie : HandLandmarkerResult { landmarks, handedness }
+
+2. PoseLandmarker Lite (MediaPipe)
+   - Détecte 33 points du corps (épaules, coudes, hanches, etc.)
+   - Inclut la visibilité et profondeur (Z)
+   - Crucial pour normaliser la pose par rapport aux épaules
+   - Sortie : PoseLandmarkerResult { landmarks }
+
+3. best_model.onnx (ONNX)
+   - Réseau de neurones entraîné pour classification de signes LSC
+   - Entrée  : 87 frames × 258 dimensions (126 hand + 132 pose)
+   - Sortie  : probabilités sur 60+ signes LSC
+   - Exécution : WASM, GPU-accéléré si disponible
+
+
+FLUX D'EXÉCUTION COMPLET
+================================================================================
+
+1. PHASE D'INITIALISATION
+-------------------------
+
+  [CameraPageComponent.startCamera()]
+      ↓
+  [CameraService.startCamera()]
+      → Accès caméra via getUserMedia() (idéalement 1280×720, 60 fps)
+      → Retourne MediaStream
+      ↓
+  [LandmarkService.init()]
+      → Charge les modèles MediaPipe (hand_landmarker.task, pose_landmarker_lite.task)
+      → Initialise GPU acceleration
+      → Signal isReady = true
+      ↓
+  [SegmentationService.setVideoDimensions(width, height)]
+      → Stocke les dimensions réelles pour détection d'orientation (portrait vs paysage)
+      ↓
+  [LandmarkService.startDetection() + TranslationService.startTranslation()]
+      → Boucle d'animation : requestAnimationFrame → détection → émission de frames
+
+
+2. BOUCLE PRINCIPALE (RequestAnimationFrame)
+--------------------------------------------
+
+LandmarkService exécute une boucle qui :
+  1. Synchronise le canvas avec le flux vidéo
+  2. Appelle handLandmarker.detectForVideo() + poseLandmarker.detectForVideo()
+  3. Dessine les landmarks sur le canvas (squelette des mains et pose)
+  4. Émet un événement RxJS frame$ contenant les landmarks bruts
+
+  Événement frame$ → {
+    handResult: HandLandmarkerResult {
+      landmarks: [ [hand1_21points], [hand2_21points], ... ]
+      handedness: ['Left'/'Right']
+    }
+    poseResult: PoseLandmarkerResult {
+      landmarks: [ [33_body_points] ]
+    }
+  }
+
+
+3. PIPELINE DE SEGMENTATION
+----------------------------
+
+Le SegmentationService reçoit les landmarks bruts chaque frame et exécute un 
+détecteur de mouvements avec états :
+
+État IDLE :
+  • Mesure la vélocité des poignets entre frames
+  • Si vélocité > seuil + mains visibles → onsetCounter++
+  • Après 5+ frames actives → passe à l'état SIGNING
+
+État SIGNING :
+  • Accumule les vecteurs de features (63 dims hand left + 63 right + 132 pose)
+  
+  • TRANSFORMATION D'ORIENTATION :
+    Si hauteur_vidéo > largeur_vidéo (portrait) :
+      Pour chaque landmark (x, y) :
+        x_landscape = y_portrait
+        y_landscape = 1 - x_portrait
+    Crucial pour normaliser les gestes captés en mode portrait
+  
+  • TROIS CONDITIONS D'ARRÊT :
+    1. Mains disparues → émit segment final
+    2. Immobilité détectée (≥30 frames à < 0.02 de rayon) → émit segment final
+    3. Buffer trop long (≥180 frames) → émit segment final (forçage)
+  
+  • INFÉRENCE GLISSANTE :
+    Toutes les 15 frames accumulées, émet un segment non-final pour traduction 
+    prédictive. Garde 15 frames de contexte pour la continuité.
+
+SignSegment émis → segment$ RxJS Subject :
+  {
+    frames: Float32Array[],        // T ≤ 180 frames
+    rawFrameCount: number,
+    isFinal: boolean               // true = condition d'arrêt, false = glissant
+  }
+
+
+4. PIPELINE DE TRADUCTION (TranslationService)
+-----------------------------------------------
+
+Pour chaque segment reçu :
+
+a) Rééchantillonnage Temporel
+   T frames reçus → 87 frames (constant)
+     • Si T < 87 : interpolation linéaire entre les points adjacents
+     • Si T > 87 : sous-échantillonnage par position relative
+     • Objectif : normaliser la durée variable des gestes
+
+b) Normalisation des Keypoints
+   Pour chaque frame F :
+     1. Calcul du vecteur épaules : (l_shoulder → r_shoulder)
+     2. Distance inter-épaules = référence d'échelle
+     3. Centre = milieu épaules
+     4. Pour chaque landmark main/pose :
+        → (x - cx) / distance
+        → (y - cy) / distance
+     (Coordonnée Z non normalisée)
+   Résultat : features invariantes par translation/échelle
+
+c) Inférence ONNX
+   Entrée : Tensor [1, 87, 258] (batch, frames, dimensions)
+     ↓
+   best_model.onnx (réseau de neurones)
+     ↓
+   Sortie : Logits [1, 64] (scores bruts par classe)
+
+d) Vote Majoritaire & Validation
+   Fenêtre glissante : VOTE_WINDOW = 5 dernières prédictions
+   
+   Pour chaque prédiction :
+     1. Softmax(logits) → probabilités [0, 1]
+     2. ArgMax → mot avec confiance max
+     3. Si confiance ≥ 0.55 → ajoute à la file de vote
+   
+   4. Si ≥ 3 prédictions identiques dans la fenêtre
+      → VALIDATION du mot
+      → Ajout à la phrase courante
+      → Enregistrement dans l'historique de session
+      → Vidage de la file de vote
+
+
+MODES DE FONCTIONNEMENT
+================================================================================
+
+Mode Caméra (CameraPageComponent)
+---------------------------------
+  • Flux vidéo en direct avec overlay
+  • Landmarks affichés en temps réel sur canvas
+  • Affichage du mot détecté + barre de confiance (avec auto-fade)
+  • Panneau de debug :
+    - Vote majoritaire en cours
+    - Dernières 30 prédictions brutes
+    - Indicateurs : FPS, latence, nombre de mains détectées
+  • Contrôles : play/pause, flip caméra, flashlight (si dispo)
+
+
+Mode Upload (UploadPageComponent)
+---------------------------------
+  • Upload d'une vidéo locale (mp4, webm, etc.)
+  • Lecture frame-by-frame avec progression
+  • Affichage des prédictions avec tous les scores (top 10)
+  • Lissage temporel des résultats
+  • Export/sauvegarde optionnelle
+
+
+DÉTAILS CLÉS D'IMPLÉMENTATION
+================================================================================
+
+Détection d'Orientation
+-----------------------
+Dans SegmentationService.extractFeatures() :
+
+  const isPortrait = this.videoHeight > this.videoWidth;
+  
+  Si portrait, chaque landmark (x, y, z) devient :
+    x_transformed = y_original;
+    y_transformed = 1 - x_original;
+    z_unchanged = z_original;
+
+Cela permet de normaliser les gestes captés en mode portrait (téléphone vertical) 
+et mode paysage.
+
+
+Gestion de la Latence
+---------------------
+  • Latence complète mesurée pour chaque segment : détection + inférence
+  • Affiché en temps réel dans le panneau de debug
+  • Objectif : < 100-200 ms pour une expérience fluide
+
+
+Gestion du Contexte Multi-Mains
+-------------------------------
+  • Accumule jusqu'à 2 mains + pose corporelle simultanément
+  • Vecteurs combinés : [hand_left, hand_right, pose]
+  • Normalisation relative aux épaules (référence commune)
+  • Invariance à la translation et à l'échelle
+
+
+Historique de Session
+---------------------
+TranslationSession {
+  id: UUID,
+  startedAt: Date,
+  results: TranslationResult[],    // Tous les mots validés
+  language: 'LSC' | 'ASL' | 'BSL'  // Extensible
+}
+
+Sauvegardé en mémoire pour la session; peut être exporté/sauvegardé.
+
+
+MODÈLES ET VOCABULAIRE
+================================================================================
+
+Vocabulaire support : 60+ signes LSC, incluant :
+  • Objets       : NOM, ACCIDENT, CHAISE, EAU, PAIN, MOTO, etc.
+  • Actions      : APPELER, DORMIR, S'ENTRAINER, OUBLIER, etc.
+  • Adjectifs    : BIEN, DIFFICILE, FROID, COMIQUE, DUR, MAL, etc.
+  • Couleurs     : BLANC, BLEU, ROUGE, NOIR, MARRON
+  • Relations    : MAMAN, PAPA, FAMILLE, MERCI, GARDIEN DE BUT, etc.
+  • Concepts     : PAS, PEU IMPORTE, CONCENTRE-TOI, NE PAS SAVOIR, etc.
+  • Autres       : ACCIDENT DE VOITURE, FOOTBALL, LION, RADIO, RÉGION, etc.
+
+
+PERFORMANCE & OPTIMISATIONS
+================================================================================
+
+Métrique                        Cible               Détails
+───────────────────────────────────────────────────────────────────────────
+FPS                            30+                Mesuré en temps réel (affichage debug)
+Latence totale                 < 200 ms           Détection + inférence
+Mémoire                        ~150-200 MB        Modèles WASM + buffers
+Supports vidéo                 1280×720 idéal     Fallback adaptatif
+Segments validés               ~ 1-2 mots/sec     Dépend de la vélocité des mains
+Confiance minimale (vote)      ≥ 0.55             Pour participer au vote majoritaire
+Vote majoritaire requis        ≥ 3 prédictions    Sur une fenêtre de 5
+
+
+FLUX DE DONNÉES RÉSUMÉ
+================================================================================
+
+  Caméra
+    ↓
+  LandmarkService (détection MediaPipe)
+    ↓
+  SegmentationService (segmentation + transformation orientation)
+    ↓
+  TranslationService (rééchantillonnage → normalisation → inférence ONNX → vote)
+    ↓
+  [currentWord signal]  [confidence signal]  [currentSentence signal]
+    ↓
+  Template (affichage) + historique session
+
+
+POINTS TECHNIQUES IMPORTANTS
+================================================================================
+
+  • RxJS Subjects       : Communication asynchrone entre services
+  • Angular Signals     : État réactif sans changement de détection
+  • RequestAnimationFrame : Synchronisation avec écran (60 Hz)
+  • WebAssembly         : MediaPipe et ONNX Runtime tournent en WASM (GPU-accéléré)
+  • Standalone Components : Architecture moderne Angular sans NgModules
+  • Tailwind CSS        : Styling avec Material Design 3
+  • Float32Array        : Optimisation mémoire pour les tenseurs
+
+
+LIMITATIONS ACTUELLES & POINTS D'EXTENSION
+================================================================================
+
+  ✓ LSC uniquement (peut étendre avec ASL, BSL)
+  ✓ Gestes monolingues (pas de phrases complexes multi-signes)
+  ✓ Dépendance GPU (fallback CPU possible mais lent)
+  ✓ Modèle entraîné offline (pas d'apprentissage en temps réel)
+  ✓ Pas de persistance locale (localStorage possible)
+  ✓ Pas de synchronisation cloud (à implémenter)
+
+
+ROUTES DE L'APPLICATION
+================================================================================
+
+  / (racine)          → Redirection vers /camera
+  /camera             → CameraPageComponent (mode temps réel)
+  /upload             → UploadPageComponent (mode fichier vidéo)
+  /<autre>            → Redirection vers /camera (catch-all)
+
+
+SERVICES PRINCIPAUX
+================================================================================
+
+CameraService
+  • Gestion du flux vidéo (getUserMedia)
+  • Contrôle de la caméra (flip, flashlight)
+  • État de la caméra (isActive, facing)
+
+LandmarkService
+  • Initialisation des modèles MediaPipe
+  • Boucle de détection (requestAnimationFrame)
+  • Dessin des landmarks sur canvas
+  • Émission des frames (frame$ Subject)
+
+SegmentationService
+  • Détection du début/fin des gestes
+  • Segmentation des mouvements avec transitions
+  • Détection d'immobilité et de vélocité
+  • Émission des segments (segment$ Subject)
+  • Détection et transformation d'orientation vidéo
+
+TranslationService
+  • Chargement du modèle ONNX
+  • Rééchantillonnage et normalisation
+  • Inférence ML
+  • Vote majoritaire et validation
+  • Gestion de l'historique de session
+  • Mesure de latence et FPS
+
+
+CONCLUSION
+================================================================================
+
+SignAI est une application de reconnaissance de langue des signes mature et 
+architecturée, combinant :
+  • Détection visuelle en temps réel (MediaPipe)
+  • Segmentation intelligente des mouvements
+  • Inférence ML efficace (ONNX)
+  • Interface utilisateur réactive (Angular 21, signals)
+  • Support multi-plateforme (web + mobile via Capacitor)
+
+L'architecture est scalable et extensible pour ajouter d'autres langues de 
+signes, des modèles améliorés, et des fonctionnalités avancées (traduction 
+bilingue, apprentissage continu, etc.).

@@ -15,5 +15,5 @@ export interface TranslationSession {
   id: string;
   startedAt: Date;
   results: TranslationResult[];
-  language: 'LSF' | 'ASL' | 'BSL';
+  language: 'LSC' | 'ASL' | 'BSL';
 }

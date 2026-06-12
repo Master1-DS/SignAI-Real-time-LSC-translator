@@ -143,12 +143,29 @@
 .font-headline-lg { font-size: 32px; line-height: 40px; letter-spacing: -0.01em; font-weight: 600; }
 .font-body-md     { font-size: 16px; line-height: 24px; font-weight: 400; }
 
-html, body {
+html {
   overscroll-behavior: none;
-  overflow: hidden;
-  height: 100%;
+  background-color: #101415;
+}
+ 
+body {
   background-color: #101415;
   color: #e0e3e5;
   font-family: 'Inter', ui-sans-serif, system-ui;
   padding-bottom: env(safe-area-inset-bottom);
+  min-height: 100dvh;
+}
+
+app-root {
+  display: block;
+  min-height: 100dvh;
+}
+
+.page-camera {
+  overflow: hidden !important;
+  height: 100dvh;
+  position: fixed;
+  width: 100%;
+  top: 0;
+  left: 0;
 }

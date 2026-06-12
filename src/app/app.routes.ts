@@ -2,11 +2,11 @@ import { Routes } from '@angular/router';
 
 export const routes: Routes = [
     { path: '', redirectTo: 'camera', pathMatch: 'full' },
-    // {
-    //     path: 'home',
-    //     loadComponent: () =>
-    //     import('./features/home/pages/home-page.component').then(m => m.HomePageComponent),
-    // },
+    {
+        path: 'upload',
+        loadComponent: () =>
+        import('../pages/upload/upload-page').then(m => m.UploadPageComponent),
+    },
     {
         path: 'camera',
         loadComponent: () =>

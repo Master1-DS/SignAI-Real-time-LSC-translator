@@ -7,6 +7,12 @@ import {
   HandLandmarkerResult,
   PoseLandmarkerResult,
 } from '@mediapipe/tasks-vision';
+import { Subject } from 'rxjs';
+
+export interface FrameLandmarks {
+  handResult: HandLandmarkerResult;
+  poseResult: PoseLandmarkerResult;
+}
 
 @Injectable({ providedIn: 'root' })
 export class LandmarkService {
@@ -16,15 +22,15 @@ export class LandmarkService {
   private animFrameId: number | null = null;
   private lastVideoTime = -1;
 
-  readonly isReady    = signal(false);
+  readonly isReady       = signal(false);
   readonly handsDetected = signal(0);
+
+  readonly frame$ = new Subject<FrameLandmarks>();
 
   async init(): Promise<void> {
     if (this.isReady()) return;
 
-    const vision = await FilesetResolver.forVisionTasks(
-      '/mediapipe-wasm'
-    );
+    const vision = await FilesetResolver.forVisionTasks('/mediapipe-wasm');
 
     [this.handLandmarker, this.poseLandmarker] = await Promise.all([
       HandLandmarker.createFromOptions(vision, {
@@ -34,6 +40,9 @@ export class LandmarkService {
         },
         runningMode: 'VIDEO',
         numHands: 2,
+        minHandDetectionConfidence: 0.4,
+        minHandPresenceConfidence: 0.4,
+        minTrackingConfidence: 0.4,
       }),
       PoseLandmarker.createFromOptions(vision, {
         baseOptions: {
@@ -42,6 +51,9 @@ export class LandmarkService {
         },
         runningMode: 'VIDEO',
         numPoses: 1,
+        minPoseDetectionConfidence: 0.4,
+        minPosePresenceConfidence: 0.4,
+        minTrackingConfidence: 0.4,
       }),
     ]);
 
@@ -57,21 +69,27 @@ export class LandmarkService {
     const loop = () => {
       this.animFrameId = requestAnimationFrame(loop);
 
+      // Synchronise les dimensions canvas <-> vidéo
       if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
         canvas.width  = video.videoWidth;
         canvas.height = video.videoHeight;
       }
+
       if (video.currentTime === this.lastVideoTime) return;
       this.lastVideoTime = video.currentTime;
 
       const ts = performance.now();
-      const handResult: HandLandmarkerResult = this.handLandmarker!.detectForVideo(video, ts);
-      const poseResult: PoseLandmarkerResult = this.poseLandmarker!.detectForVideo(video, ts);
+      const handResult = this.handLandmarker!.detectForVideo(video, ts);
+      const poseResult = this.poseLandmarker!.detectForVideo(video, ts);
 
+      // Dessin sur le canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       this.drawHands(handResult);
       this.drawPose(poseResult);
       this.handsDetected.set(handResult.landmarks.length);
+
+      // Émission des landmarks bruts -> TranslationService
+      this.frame$.next({ handResult, poseResult });
     };
 
     loop();
@@ -90,7 +108,7 @@ export class LandmarkService {
       this.drawingUtils.drawConnectors(lm, HandLandmarker.HAND_CONNECTIONS,
         { color: 'rgba(173,198,255,0.7)', lineWidth: 2 });
       this.drawingUtils.drawLandmarks(lm,
-        { color: '#4d8eff', fillColor: 'rgba(173,198,255,0.9)', lineWidth: 1, radius: 4 });
+        { color: '#f70303', fillColor: 'rgb(255, 7, 7)', lineWidth: 1, radius: 4 });
     }
   }
 
@@ -100,7 +118,7 @@ export class LandmarkService {
       this.drawingUtils.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS,
         { color: 'rgba(192,193,255,0.5)', lineWidth: 2 });
       this.drawingUtils.drawLandmarks(lm,
-        { color: '#c0c1ff', fillColor: 'rgba(192,193,255,0.8)', lineWidth: 1, radius: 3 });
+        { color: '#0409ff', fillColor: 'rgba(5, 9, 255, 0.8)', lineWidth: 1, radius: 3 });
     }
   }
 

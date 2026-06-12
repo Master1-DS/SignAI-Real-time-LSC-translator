@@ -1,0 +1,282 @@
+<div class="px-5 pt-4 pb-6 flex flex-col gap-5">
+
+    <div>
+        <h2 class="font-headline-lg text-headline-lg text-on-surface">Analyser une vidéo</h2>
+    </div>
+
+    <input
+        #fileInput
+        type="file"
+        accept="video/*"
+        class="hidden"
+        (change)="onFileSelected($event)"
+    />
+
+    @if (state() === 'idle') {
+        <button
+            (click)="fileInput.click()"
+            class="w-full rounded-3xl border-2 border-dashed border-outline-variant
+            p-10 flex flex-col items-center gap-4
+            hover:border-primary/60 hover:bg-surface-container-low/30
+            active:scale-[0.98] transition-all duration-200">
+            
+            <div class="w-16 h-16 rounded-full bg-primary-container/20
+                flex items-center justify-center">
+                <span class="material-symbols-outlined text-4xl text-outline"
+                    style="font-variation-settings:'FILL' 0,'wght' 300,'GRAD' 0,'opsz' 48">
+                    video_file
+                </span>
+            </div>
+            <div class="text-center">
+                <p class="text-on-surface font-label-md text-label-md">Sélectionner une vidéo</p>
+                <p class="text-on-surface-variant text-label-sm mt-1">MP4 · MOV · WEBM</p>
+            </div>
+        </button>
+    }
+
+    @if (state() === 'ready' || state() === 'done' || state() === 'processing' || state() === 'loading-models') {
+        <div class="bg-surface-container rounded-2xl p-4 border border-white/5
+        f   lex items-center gap-3">
+        
+            <div class="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+                <span class="material-symbols-outlined text-primary"
+                    style="font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24">
+                    videocam
+                </span>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-on-surface font-label-md text-label-md truncate">{{ fileName() }}</p>
+                <p class="text-on-surface-variant text-label-sm mt-0.5">
+                    {{ formatTime(videoDuration()) }}
+                </p>
+            </div>
+            @if (state() === 'ready') {
+                <button (click)="fileInput.click()"
+                    class="text-outline hover:text-on-surface transition-colors p-1 flex-shrink-0">
+                    
+                    <span class="material-symbols-outlined text-[20px]"
+                        style="font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24">
+                        swap_horiz
+                    </span>
+                </button>
+            }
+        </div>
+
+        <div class="rounded-2xl overflow-hidden bg-black relative">
+            <video
+                #videoPlayer
+                [src]="videoUrl()!"
+                class="w-full max-h-56 object-contain"
+                playsinline
+                (timeupdate)="onTimeUpdate()"
+                (loadedmetadata)="onVideoLoaded()"
+                (ended)="isPlaying.set(false)"
+            ></video>
+
+            <div class="absolute bottom-0 left-0 right-0
+                bg-gradient-to-t from-black/85 to-transparent px-4 pb-3 pt-8">
+        
+                <div class="w-full h-1 bg-white/20 rounded-full mb-3 cursor-pointer"
+                    (click)="seekVideo($event)">
+        
+                    <div class="h-full bg-primary rounded-full progress-fill"
+                        [style.width.%]="videoProgress()"></div>
+                    </div>
+                <div class="flex items-center gap-3">
+                    <button (click)="skip(-5)"
+                        class="text-white/70 hover:text-white active:scale-90 transition-all">
+                        
+                        <span class="material-symbols-outlined text-[20px]"
+                            style="font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24">
+                            replay_5
+                        </span>
+                    </button>
+                    <button (click)="togglePlay()"
+                        class="text-white hover:text-primary active:scale-90 transition-all">
+                    
+                        <span class="material-symbols-outlined text-[30px]"
+                            style="font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24">
+                            {{ isPlaying() ? 'pause_circle' : 'play_circle' }}
+                        </span>
+                    </button>
+                    <button (click)="skip(5)"
+                        class="text-white/70 hover:text-white active:scale-90 transition-all">
+                    
+                        <span class="material-symbols-outlined text-[20px]"
+                            style="font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24">
+                            forward_5
+                        </span>
+                    </button>
+                    <span class="text-white/60 text-label-sm font-label-sm flex-1 text-center">
+                        {{ currentTimeLabel() }} / {{ durationLabel() }}
+                    </span>
+                    <button (click)="toggleMute()"
+                        class="text-white/70 hover:text-white transition-colors">
+                    
+                        <span class="material-symbols-outlined text-[18px]"
+                            style="font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24">
+                            {{ isMuted() ? 'volume_off' : 'volume_up' }}
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (state() === 'ready') {
+        <button
+            (click)="startAnalysis()"
+            class="w-full py-4 rounded-full bg-primary text-on-primary
+            font-label-md text-label-md shadow-lg shadow-primary/25
+            hover:opacity-90 active:scale-95 transition-all duration-200
+            flex items-center justify-center gap-2">
+        
+            <span class="material-symbols-outlined text-[20px]"
+                style="font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24">
+                manage_search
+            </span>
+            Analyser la vidéo
+        </button>
+    }
+
+    @if (state() === 'loading-models') {
+        <div class="flex flex-col items-center gap-3 py-4">
+            <div class="w-9 h-9 rounded-full border-4 border-primary/30 border-t-primary animate-spin"></div>
+            <p class="text-on-surface-variant text-label-md font-label-md">
+                Chargement des modèles…
+            </p>
+        </div>
+    }
+
+    @if (state() === 'processing') {
+        <div class="bg-surface-container rounded-2xl p-5 border border-white/5">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-on-surface font-label-md text-label-md">Extraction des keypoints…</span>
+                <span class="text-primary font-label-sm text-label-sm">{{ processingProgress() }}%</span>
+            </div>
+            <div class="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
+                <div class="h-full bg-primary rounded-full progress-fill"
+                    [style.width.%]="processingProgress()"></div>
+            </div>
+            <p class="text-on-surface-variant text-label-sm mt-2 opacity-60">
+                Frame {{ currentFrame() }} / {{ totalFrames() }} — rééchantillonnage à {{ NUM_FRAMES }} frames
+            </p>
+        </div>
+    }
+
+    @if (state() === 'done' && result()) {
+        <div class="result-card flex flex-col gap-3">
+
+            <div class="flex items-center justify-between">
+                <p class="text-on-surface-variant text-label-sm font-label-sm
+                    uppercase tracking-widest opacity-60">
+                    Résultat
+                </p>
+                <div class="flex items-center gap-4">
+                    <button (click)="fileInput.click()"
+                        class="text-outline hover:text-on-surface transition-colors p-1">
+                        
+                        <span class="material-symbols-outlined text-[20px]"
+                            style="font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24">
+                            swap_horiz
+                        </span>
+                    </button>
+                    <button (click)="reset()"
+                        class="text-primary text-label-sm font-label-sm hover:opacity-70 transition-opacity">
+                        <span class="material-symbols-outlined text-[20px]"
+                            style="font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24">
+                            refresh
+                        </span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-surface/40 glass-panel border border-white/10 rounded-2xl p-5
+                flex items-center gap-4">
+            
+                <div class="w-12 h-12 rounded-full flex-shrink-0 flex items-center justify-center"
+                    [class.bg-primary/20]="result()!.confidence >= 0.7"
+                    [class.bg-tertiary/20]="result()!.confidence >= 0.4 && result()!.confidence < 0.7"
+                    [class.bg-error/20]="result()!.confidence < 0.4">
+            
+                    <span class="material-symbols-outlined text-2xl"
+                        [class.text-primary]="result()!.confidence >= 0.7"
+                        [class.text-tertiary]="result()!.confidence >= 0.4 && result()!.confidence < 0.7"
+                        [class.text-error]="result()!.confidence < 0.4"
+                        style="font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24">
+                        sign_language
+                    </span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-on-surface font-headline-md text-headline-md">
+                        {{ result()!.word }}
+                    </p>
+                    <div class="mt-2 flex items-center gap-2">
+                        <div class="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                            <div class="h-full rounded-full conf-fill"
+                                [style.width.%]="result()!.confidence * 100"
+                                [class.bg-primary]="result()!.confidence >= 0.7"
+                                [class.bg-tertiary]="result()!.confidence >= 0.4 && result()!.confidence < 0.7"
+                                [class.bg-error]="result()!.confidence < 0.4">
+                            </div>
+                        </div>
+                        <span class="text-label-sm font-label-sm flex-shrink-0"
+                            [class.text-primary]="result()!.confidence >= 0.7"
+                            [class.text-tertiary]="result()!.confidence >= 0.4 && result()!.confidence < 0.7"
+                            [class.text-error]="result()!.confidence < 0.4">
+                            {{ (result()!.confidence * 100).toFixed(1) }}%
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            @if (result()!.allScores.length > 1) {
+                <p class="text-on-surface-variant text-label-sm font-label-sm
+                    uppercase tracking-widest opacity-60">
+                    Autres candidats
+                </p>
+                <div class="flex flex-col gap-2">
+                    @for (score of result()!.allScores.slice(1, 5); track score.label) {
+                        <div class="bg-surface-container rounded-xl px-4 py-3 border border-white/5
+                            flex items-center gap-3">
+                        
+                            <span class="text-on-surface font-label-md text-label-md flex-1 truncate">
+                                {{ score.label }}
+                            </span>
+                            <div class="w-24 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                                <div class="h-full rounded-full bg-outline/60 conf-fill"
+                                    [style.width.%]="score.score * 100">
+                                </div>
+                            </div>
+                            <span class="text-outline text-label-sm font-label-sm w-10 text-right">
+                                {{ (score.score * 100).toFixed(0) }}%
+                            </span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @if (state() === 'error') {
+        <div class="bg-error-container/20 border border-error/30 rounded-2xl p-4
+            flex gap-3 items-start">
+        
+            <span class="material-symbols-outlined text-error mt-0.5 flex-shrink-0"
+                style="font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24">
+                error
+            </span>
+            <div class="flex-1">
+                <p class="text-on-error-container font-label-md text-label-md">Erreur d'analyse</p>
+                <p class="text-on-surface-variant text-label-sm mt-1 break-words">
+                    {{ errorMessage() }}
+                </p>
+                <button (click)="reset()"
+                    class="mt-3 text-primary text-label-sm font-label-sm underline">
+                    Réessayer
+                </button>
+            </div>
+        </div>
+    }
+
+</div>

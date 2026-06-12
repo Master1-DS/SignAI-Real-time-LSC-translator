@@ -7,7 +7,7 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "postinstall": "node scripts/copy-mediapipe-assets.mjs"
+    "postinstall": "node scripts/copy-mediapipe-assets.mjs && node scripts/copy-ort-wasm.mjs"
   },
   "private": true,
   "packageManager": "npm@11.13.0",
@@ -22,6 +22,7 @@
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "@mediapipe/tasks-vision": "^0.10.35",
+    "onnxruntime-web": "^1.26.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },

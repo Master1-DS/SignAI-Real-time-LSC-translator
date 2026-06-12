@@ -37,7 +37,7 @@ import { CommonModule } from '@angular/common';
                   bg-surface-container-high/80 glass-panel border border-white/10
                   rounded-full p-1.5 px-4 gap-4">
         <div class="flex items-center gap-2">
-          <span class="font-label-md text-label-md text-on-surface-variant">LSF</span>
+          <span class="font-label-md text-label-md text-on-surface-variant">LSC</span>
           <span class="material-symbols-outlined icon-outline" style="font-size:16px; color:#8c909f">
             arrow_forward
           </span>
@@ -61,9 +61,11 @@ import { CommonModule } from '@angular/common';
       <!-- Flip Camera -->
       <button
         (click)="flipRequested.emit()"
+        [disabled]="true"
         class="w-14 h-14 rounded-full bg-surface-container-high/80 glass-panel border border-white/10
                flex items-center justify-center text-on-surface
-               hover:bg-surface-container-highest transition-colors active:scale-90 duration-150">
+               hover:bg-surface-container-highest transition-colors active:scale-90 duration-150
+               disabled:opacity-30 disabled:cursor-not-allowed">
         <span class="material-symbols-outlined icon-outline">flip_camera_android</span>
       </button>
 
