@@ -1,0 +1,15 @@
+=== RÉSULTATS D'ÉVALUATION ===
+Accuracy                : 0.6274 (62.74%)
+Precision (macro)       : 0.5247
+Rappel    (macro)       : 0.5879
+F1-score  (macro)       : 0.5324
+Precision (micro)       : 0.6274
+Rappel    (micro)       : 0.6274
+F1-score  (micro)       : 0.6274
+Precision (weighted)    : 0.6158
+Rappel    (weighted)    : 0.6274
+F1-score  (weighted)    : 0.5979
+Top-1 Accuracy          : 0.6274 (62.74%)
+Top-3 Accuracy          : 0.8066 (80.66%)
+AUC macro              : nan
+AUC weighted           : 0.9730
